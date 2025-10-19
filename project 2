@@ -1,0 +1,141 @@
+# Build your wrangle function
+def wrangle(filepath):
+    # load the csv file into the dataframe
+    df = pd.read_csv(filepath)
+
+    # Subset data: Apartments in "Distrito Federal", less than  $100,000    
+    mask_mx = df["place_with_parent_names"].str.contains("Distrito Federal")
+    mask_apt = df["property_type"] == "apartment"
+    mask_price = df["price_aprox_usd"] <100_000
+    df = df[mask_mx & mask_apt & mask_price]
+
+  # subset: Remove outliers by trimming the bottom and top 10% for "surface_covered_in_m2"
+    low, high = df["surface_covered_in_m2"].quantile([0.1, 0.9])
+    mask_area =  df["surface_covered_in_m2"].between (low,high)
+    df = df[mask_area]
+    
+    # split the "lat-lon" column
+    df[["lat", "lon"]] = df["lat-lon"].str.split(",", expand=True).astype(float) 
+    df.drop(columns="lat-lon", inplace=True)
+    
+    # Extract borough from place_with_parent_names
+    df["borough"] = df["place_with_parent_names"].str.split("|", expand=True)[1]
+    df.drop(columns="place_with_parent_names", inplace=True)
+    
+    before dropping use this to explore 
+       df.isnull().sum() / len(df) then drop
+    # Drop columns that are more than 50% null values
+    df.drop(columns =["surface_total_in_m2", "price_usd_per_m2", "floor", "rooms", "expenses"], inplace= True)
+    
+           before dropping use this to explore
+      df.select_dtype("0bject").head()/nunique()   then drop
+   # Drop columns containing low- or high-cardinality categorical values
+    df.drop(columns =["operation", "property_type", "currency", "properati_url"], inplace=True)
+   
+    # drop leaky column
+    df.drop (columns =[
+    'price',
+    'price_aprox_local_currency',
+    'price_per_m2'],
+    inplace=True)
+    return df
+df = wrangle("data/mexico-city-real-estate-1.csv")
+df.select_dtypes("object").nunique()
+corr = df.select_dtypes("number").drop(columns ="price_aprox_usd").corr()
+sns.heatmap(corr)
+files = glob("data//mexico-city-real-estate-*.csv")
+files
+frames = []
+for file in files:
+    df = wrangle(file) 
+    frames.append(df)
+df = pd.concat(frames, ignore_index=True)
+df.head()
+# Build histogram
+plt.hist(df["price_aprox_usd"])
+
+# Label axes
+plt.xlabel("Price [$]")
+plt.ylabel("Count")
+
+# Add title
+plt.title("Distribution of Apartment Prices")
+
+# Don't delete the code below 👇
+plt.savefig("images/2-5-4.png", dpi=150)
+with open("images/2-5-4.png", "rb") as file:
+    wqet_grader.grade("Project 2 Assessment", "Task 2.5.4", file)
+# Build scatter plot
+plt.scatter(x=df["surface_covered_in_m2"], y=df["price_aprox_usd"])
+
+# Label axes
+plt.xlabel("Area [sq meters]")
+plt.ylabel("Price [USD]")
+
+# Add title
+plt.title("Mexico City: Price vs. Area")
+
+# Don't delete the code below 👇
+plt.savefig("images/2-5-5.png", dpi=150)
+# Plot Mapbox location and price
+fig = px.scatter_mapbox(
+    df, # our dataframe
+    lat="lat",
+    lon="lon",
+    width=900, # width of the mao
+    height=600,  # height of themap
+    color="price_aprox_usd",
+    hover_data=["price_aprox_usd"], # Display price when hovering mouse over house
+)
+
+fig.update_layout(mapbox_style="open-street-map")
+    
+fig.show()
+# Split data into feature matrix `X_train` and target vector `y_train`.
+target = "price_aprox_usd"
+features = df.columns.drop(target)
+X_train = df[features]
+y_train = df[target]
+y_mean = y_train.mean()
+y_pred_baseline = [y_mean] * len(y_train)
+baseline_mae = mean_absolute_error(y_train, y_pred_baseline)
+print("Mean apt price:", y_mean)
+print("Baseline MAE:", baseline_mae)
+=====
+prov=y_pred_baseline [:5]
+X_train.head()
+==
+# Build Model
+model = make_pipeline(
+    OneHotEncoder(use_cat_names=True),
+    SimpleImputer(),
+    Ridge()
+)
+# Fit model
+model.fit(X_train, y_train)
+X_test = pd.read_csv("data/mexico-city-test-features.csv")[features]
+print(X_test.info())
+X_test.head()
+coefficients = model.named_steps["ridge"].coef_.round(2)
+features = model.named_steps["onehotencoder"].get_feature_names_out()
+feat_imp = pd.Series(coefficients, index=features)
+feat_imp = feat_imp.reindex(feat_imp.abs().sort_values().index)  # sort by absolute value
+feat_imp.head()
+# Build bar chart
+top_10 = feat_imp.abs().sort_values(ascending=False).head(10)
+
+# Label axes
+plt.xlabel("Importance [USD]")
+plt.ylabel("Feature")
+
+
+
+# Add title
+plt.title("Feature Importances for Apartment Price")
+
+# Don't delete the code below 👇
+plt.savefig("images/2-5-13.png", dpi=150)
+
+
+
+
